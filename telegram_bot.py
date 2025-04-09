@@ -7,7 +7,7 @@ GOOGLE_DRIVE_ID = "ТВОЙ_ID_ИЗ_ССЫЛКИ"
 
 if not os.path.exists(MODEL_DIR):
     print("📦 Загружаю модель с Google Drive...")
-    url = f"https://drive.google.com/uc?id=1QEoPARymft3EBHxLKRrzhpVATZ-YBx1i}"
+    url = f"https://drive.google.com/uc?id=1QEoPARymft3EBHxLKRrzhpVATZ-YBx1i"
     gdown.download(url, MODEL_ZIP_PATH, quiet=False)
     with zipfile.ZipFile(MODEL_ZIP_PATH, "r") as zip_ref:
         zip_ref.extractall(MODEL_DIR)
