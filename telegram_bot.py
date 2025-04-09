@@ -1,14 +1,16 @@
-import os, zipfile, requests
+import os, zipfile
+import gdown
 
-MODEL_ZIP_URL = "https://drive.google.com/drive/u/2/folders/1kljcCeSN_khnyVHOnRwoYf6n_sqbvaiy"
+MODEL_DIR = "dialogpt-small"
+MODEL_ZIP_PATH = "dialogpt-small.zip"
+GOOGLE_DRIVE_ID = "ТВОЙ_ID_ИЗ_ССЫЛКИ"
 
-if not os.path.exists("dialogpt-small"):
-    print("📦 Загружаю модель...")
-    r = requests.get(MODEL_ZIP_URL)
-    with open("dialogpt-small.zip", "wb") as f:
-        f.write(r.content)
-    with zipfile.ZipFile("dialogpt-small.zip", "r") as zip_ref:
-        zip_ref.extractall("dialogpt-small")
+if not os.path.exists(MODEL_DIR):
+    print("📦 Загружаю модель с Google Drive...")
+    url = f"https://drive.google.com/drive/u/2/folders/1kljcCeSN_khnyVHOnRwoYf6n_sqbvaiy}"
+    gdown.download(url, MODEL_ZIP_PATH, quiet=False)
+    with zipfile.ZipFile(MODEL_ZIP_PATH, "r") as zip_ref:
+        zip_ref.extractall(MODEL_DIR)
     print("✅ Модель распакована.")
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
