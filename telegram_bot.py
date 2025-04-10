@@ -1,18 +1,19 @@
 import os
 import zipfile
 import logging
+import shutil
 import torch
 import gdown
-import shutil
+
 from pathlib import Path
-from transformers import PreTrainedTokenizerFast, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 # Отключаем FlexAttention
 os.environ["TRANSFORMERS_NO_FLEX_ATTENTION"] = "1"
 
-# Заглушки для совместимости
+# Заглушки для torch.compiler
 if not hasattr(torch, "compiler"):
     class DummyCompiler:
         @staticmethod
@@ -27,47 +28,48 @@ if not hasattr(torch, "float8_e4m3fn"):
 # Пути
 MODEL_DIR = Path("dialogpt-small").resolve()
 ZIP_PATH = "dialogpt-small.zip"
+TOKENIZER_JSON = MODEL_DIR / "tokenizer.json"
 
-# ✅ Скачиваем и распаковываем модель
-if not MODEL_DIR.exists():
+# Скачиваем и распаковываем если не существует
+if not os.path.exists(MODEL_DIR):
     print("📦 Загружаю модель с Google Drive...")
-    file_id = "1J_uFKwD5ktNwES6SZJSdXnH5LQFxKBVH"
+    file_id = "1J_uFKwD5ktNwES6SZJSdXnH5LQFxKBVH"  # ID файла на Google Drive
     url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, ZIP_PATH, quiet=False)
 
     print("📂 Распаковываю архив...")
     with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
-        zip_ref.extractall("temp_extracted")
+        zip_ref.extractall(".")
 
-    print("📁 Перемещаю файлы в dialogpt-small/")
-    MODEL_DIR.mkdir(exist_ok=True)
-    for file in os.listdir("temp_extracted"):
-        src = os.path.join("temp_extracted", file)
-        if os.path.isfile(src):
-            shutil.move(src, MODEL_DIR / file)
-    shutil.rmtree("temp_extracted")
+    # Проверка вложенной папки
+    inner = MODEL_DIR / "dialogpt-small"
+    if inner.exists():
+        print("📁 Перемещаю файлы в dialogpt-small/")
+        for file in os.listdir(inner):
+            shutil.move(str(inner / file), MODEL_DIR)
+        os.rmdir(inner)
+
     print("✅ Модель распакована.")
 
-# Проверка наличия нужного файла
-TOKENIZER_JSON = MODEL_DIR / "tokenizer.json"
+# Проверка tokenizer.json
 if not TOKENIZER_JSON.exists():
     raise FileNotFoundError(f"❌ Файл {TOKENIZER_JSON} не найден.")
 
-# Загрузка токенизатора и модели
-tokenizer = PreTrainedTokenizerFast(tokenizer_file=str(TOKENIZER_JSON))
-model = AutoModelForCausalLM.from_pretrained(MODEL_DIR, local_files_only=True).to("cpu")
+# Загрузка модели
+tokenizer = AutoTokenizer.from_pretrained(str(MODEL_DIR), local_files_only=True)
+model = AutoModelForCausalLM.from_pretrained(str(MODEL_DIR), local_files_only=True).to("cpu")
 
-# Истории диалогов
+# Хранилище для диалогов
 chat_histories = {}
 
 # Логгирование
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# Команда /start
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Привет! Я бот на DialoGPT. Напиши мне что-нибудь!")
 
-# Ответ на сообщение
+# Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     user_message = update.message.text
@@ -98,12 +100,12 @@ async def main():
         print("❌ Переменная TELEGRAM_BOT_TOKEN не найдена.")
         return
 
-    application = ApplicationBuilder().token(token).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app = ApplicationBuilder().token(token).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("🤖 Бот запущен.")
-    await application.run_polling()
+    await app.run_polling()
 
 if __name__ == "__main__":
     import asyncio
