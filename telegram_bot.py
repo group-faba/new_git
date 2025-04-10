@@ -1,5 +1,6 @@
 import os
 import zipfile
+import shutil
 import logging
 import torch
 import gdown
@@ -24,7 +25,7 @@ if not hasattr(torch, "compiler"):
 if not hasattr(torch, "float8_e4m3fn"):
     torch.float8_e4m3fn = torch.float32
 
-# Пути
+# Пути к модели
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_DIR = BASE_DIR / "dialogpt-small"
 ZIP_PATH = BASE_DIR / "dialogpt-small.zip"
@@ -33,7 +34,8 @@ TOKENIZER_JSON = MODEL_DIR / "tokenizer.json"
 # ✅ Скачиваем и распаковываем модель
 if not MODEL_DIR.exists():
     print("\U0001F4E6 Загружаю модель с Google Drive...")
-    url = "https://drive.google.com/uc?id=1J_uFKwD5ktNwES6SZJSdXnH5LQFxKBVH"
+    file_id = "1J_uFKwD5ktNwES6SZJSdXnH5LQFxKBVH"
+    url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, str(ZIP_PATH), quiet=False)
 
     print("\U0001F4C2 Распаковываю архив...")
@@ -41,14 +43,18 @@ if not MODEL_DIR.exists():
         zip_ref.extractall(BASE_DIR)
 
     print("\U0001F4C1 Перемещаю файлы в dialogpt-small/")
-    extracted_folder = BASE_DIR / "dialogpt-small-main"
-    if extracted_folder.exists():
-        for item in extracted_folder.iterdir():
-            item.rename(MODEL_DIR / item.name)
-        extracted_folder.rmdir()
-
+    extracted_path = BASE_DIR / "dialogpt-small"
+    if not extracted_path.exists():
+        os.mkdir(extracted_path)
+    for file in BASE_DIR.glob("*.json"):
+        shutil.move(str(file), str(MODEL_DIR / file.name))
+    for file in BASE_DIR.glob("*.txt"):
+        shutil.move(str(file), str(MODEL_DIR / file.name))
+    for file in BASE_DIR.glob("*.safetensors"):
+        shutil.move(str(file), str(MODEL_DIR / file.name))
     print("✅ Модель распакована.")
 
+# Проверяем наличие tokenizer.json
 if not TOKENIZER_JSON.exists():
     raise FileNotFoundError(f"❌ Файл {TOKENIZER_JSON} не найден.")
 
@@ -57,17 +63,17 @@ print("🤖 Загружаю модель...")
 tokenizer = AutoTokenizer.from_pretrained(str(MODEL_DIR), local_files_only=True)
 model = AutoModelForCausalLM.from_pretrained(str(MODEL_DIR), local_files_only=True).to("cpu")
 
-# История сообщений
+# Истории диалогов
 chat_histories = {}
 
 # Логгирование
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# /start
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Привет! Я бот на DialoGPT. Напиши мне что-нибудь!")
 
-# Ответ на сообщение
+# Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     user_message = update.message.text
@@ -81,18 +87,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     chat_history_ids = model.generate(
         bot_input_ids,
+        attention_mask=torch.ones_like(bot_input_ids),  # Добавлено для устранения предупреждения
         max_length=200,
         pad_token_id=tokenizer.eos_token_id
     )
 
     chat_histories[chat_id] = chat_history_ids
     response_ids = chat_history_ids[:, bot_input_ids.shape[-1]:]
-    bot_response = tokenizer.decode(response_ids[0], skip_special_tokens=True).strip()
+    bot_response = tokenizer.decode(response_ids[0], skip_special_tokens=True)
 
-    if bot_response:
+    if bot_response.strip():
         await update.message.reply_text(bot_response)
     else:
-        await update.message.reply_text("🤔 Я не понял. Попробуй переформулировать.")
+        await update.message.reply_text("(Пустой ответ, попробуй ещё раз)")
 
 # Запуск
 async def main():
@@ -111,6 +118,5 @@ async def main():
 if __name__ == "__main__":
     import nest_asyncio
     import asyncio
-
     nest_asyncio.apply()
     asyncio.get_event_loop().run_until_complete(main())
