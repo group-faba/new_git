@@ -5,7 +5,19 @@ import torch
 import gdown
 from pathlib import Path
 
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import GPT2LMHeadModel, PreTrainedTokenizerFast
+
+tokenizer = PreTrainedTokenizerFast(
+    tokenizer_file=str(MODEL_DIR / "tokenizer.json"),
+    bos_token="<|endoftext|>",
+    eos_token="<|endoftext|>",
+    pad_token="<|endoftext|>"
+)
+
+model = GPT2LMHeadModel.from_pretrained(
+    str(MODEL_DIR),
+    local_files_only=True
+).to("cpu")
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
