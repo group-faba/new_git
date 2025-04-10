@@ -41,8 +41,8 @@ if not os.path.exists(MODEL_DIR):
     print("✅ Модель распакована.")
 
 # Загружаем токенизатор и модель
-tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
-model = AutoModelForCausalLM.from_pretrained(MODEL_DIR).to("cpu")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, local_files_only=True)
+model = AutoModelForCausalLM.from_pretrained(MODEL_DIR, local_files_only=True).to("cpu")
 
 # Истории диалогов
 chat_histories = {}
