@@ -30,7 +30,7 @@ ZIP_PATH = "dialogpt-small.zip"
 # ✅ Загружаем и распаковываем модель
 if not os.path.exists(MODEL_DIR):
     print("📦 Загружаю модель с Google Drive...")
-    url = "https://drive.google.com/uc?id=1Qofti-55KvIhJAbJFG223NTV8SwkUEE1"  # <- замени на свою ссылку
+    url = "https://drive.google.com/uc?id=1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"  # <- замени на свою ссылку
     response = requests.get(url, stream=True)
     with open(ZIP_PATH, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
