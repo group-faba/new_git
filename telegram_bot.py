@@ -1,56 +1,99 @@
-import os, zipfile
-import gdown
-
-MODEL_DIR = "dialogpt-small"
-MODEL_ZIP_PATH = "dialogpt-small.zip"
-GOOGLE_DRIVE_ID = "ТВОЙ_ID_ИЗ_ССЫЛКИ"
-
-if not os.path.exists(MODEL_DIR):
-    print("📦 Загружаю модель с Google Drive...")
-    url = f"https://drive.google.com/uc?id=1Qofti-55KvIhJAbJFG223NTV8SwkUEE1"
-    gdown.download(url, MODEL_ZIP_PATH, quiet=False)
-    with zipfile.ZipFile(MODEL_ZIP_PATH, "r") as zip_ref:
-        zip_ref.extractall(MODEL_DIR)
-    print("✅ Модель распакована.")
+import os
+import zipfile
+import requests
+import logging
+import torch
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-)
-import os, torch, logging
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-# Инициализация
-tokenizer = AutoTokenizer.from_pretrained("./dialogpt-small")
-model = AutoModelForCausalLM.from_pretrained("./dialogpt-small")
+# Отключаем FlexAttention
+os.environ["TRANSFORMERS_NO_FLEX_ATTENTION"] = "1"
+
+# Заглушки для совместимости
+if not hasattr(torch, "compiler"):
+    class DummyCompiler:
+        @staticmethod
+        def disable(recursive=False):
+            def decorator(func): return func
+            return decorator
+    torch.compiler = DummyCompiler()
+
+if not hasattr(torch, "float8_e4m3fn"):
+    torch.float8_e4m3fn = torch.float32
+
+# Путь к модели
+MODEL_DIR = "./dialogpt-small"
+ZIP_PATH = "dialogpt-small.zip"
+
+# ✅ Загружаем и распаковываем модель
+if not os.path.exists(MODEL_DIR):
+    print("📦 Загружаю модель с Google Drive...")
+    url = "https://drive.google.com/uc?id=1Qofti-55KvIhJAbJFG223NTV8SwkUEE1"  # <- замени на свою ссылку
+    response = requests.get(url, stream=True)
+    with open(ZIP_PATH, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+    print("📂 Распаковываю архив...")
+    with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
+        zip_ref.extractall(".")
+
+    print("✅ Модель распакована.")
+
+# Загружаем токенизатор и модель
+tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+model = AutoModelForCausalLM.from_pretrained(MODEL_DIR).to("cpu")
+
+# Истории диалогов
 chat_histories = {}
 
-logging.basicConfig(level=logging.INFO)
+# Логгинг
+logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Я DialoGPT-бот.")
+# /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("Привет! Я бот на DialoGPT. Напиши мне что-нибудь!")
 
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Ответ на сообщение
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
-    msg = update.message.text
+    user_message = update.message.text
 
-    input_ids = tokenizer.encode(msg + tokenizer.eos_token, return_tensors="pt")
+    new_input_ids = tokenizer.encode(user_message + tokenizer.eos_token, return_tensors="pt")
+
     if chat_id not in chat_histories or chat_histories[chat_id].shape[-1] > 256:
-        bot_input = input_ids
+        bot_input_ids = new_input_ids
     else:
-        bot_input = torch.cat([chat_histories[chat_id], input_ids], dim=-1)
+        bot_input_ids = torch.cat([chat_histories[chat_id], new_input_ids], dim=-1)
 
-    history = model.generate(bot_input, max_length=200, pad_token_id=tokenizer.eos_token_id)
-    chat_histories[chat_id] = history
-    response = tokenizer.decode(history[:, bot_input.shape[-1]:][0], skip_special_tokens=True)
-    await update.message.reply_text(response)
+    chat_history_ids = model.generate(
+        bot_input_ids,
+        max_length=200,
+        pad_token_id=tokenizer.eos_token_id
+    )
 
+    chat_histories[chat_id] = chat_history_ids
+
+    response_ids = chat_history_ids[:, bot_input_ids.shape[-1]:]
+    bot_response = tokenizer.decode(response_ids[0], skip_special_tokens=True)
+
+    await update.message.reply_text(bot_response)
+
+# main
 async def main():
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    app = ApplicationBuilder().token(token).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
-    await app.run_polling()
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
+        print("❌ Переменная TELEGRAM_BOT_TOKEN не найдена.")
+        return
+
+    application = ApplicationBuilder().token(token).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("🤖 Бот запущен.")
+    await application.run_polling()
 
 if __name__ == "__main__":
     import asyncio
