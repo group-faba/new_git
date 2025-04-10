@@ -25,8 +25,22 @@ if not hasattr(torch, "float8_e4m3fn"):
 
 # Пути к модели
 from pathlib import Path
+
+# Абсолютный путь к модели
 MODEL_DIR = Path("dialogpt-small").resolve()
-ZIP_PATH = "dialogpt-small.zip"
+
+# Загрузка токенизатора и модели
+tokenizer = AutoTokenizer.from_pretrained(
+    MODEL_DIR,
+    local_files_only=True,
+    trust_remote_code=True
+)
+
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_DIR,
+    local_files_only=True,
+    trust_remote_code=True
+).to("cpu")
 
 # ✅ Скачиваем и распаковываем модель
 if not os.path.exists(MODEL_DIR):
