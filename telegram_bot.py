@@ -4,20 +4,16 @@ import logging
 import torch
 import gdown
 import shutil
-import asyncio
-from pathlib import Path
 
+from pathlib import Path
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-# Настройка логирования
-logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
-
-# Отключаем FlexAttention
+# 🛠 Отключаем FlexAttention
 os.environ["TRANSFORMERS_NO_FLEX_ATTENTION"] = "1"
 
-# Заглушки для совместимости
+# 🧠 Заглушки для совместимости
 if not hasattr(torch, "compiler"):
     class DummyCompiler:
         @staticmethod
@@ -25,53 +21,64 @@ if not hasattr(torch, "compiler"):
             def decorator(func): return func
             return decorator
     torch.compiler = DummyCompiler()
+
 if not hasattr(torch, "float8_e4m3fn"):
     torch.float8_e4m3fn = torch.float32
 
-# Пути
-MODEL_NAME = "dialogpt-small"
-MODEL_DIR = Path(f"./{MODEL_NAME}").resolve()
-ZIP_PATH = f"{MODEL_NAME}.zip"
+# 📁 Пути
+BASE_DIR = Path(__file__).parent
+MODEL_DIR = BASE_DIR / "dialogpt-small"
+ZIP_PATH = BASE_DIR / "dialogpt-small.zip"
 TOKENIZER_JSON = MODEL_DIR / "tokenizer.json"
 
-# ✅ Скачиваем и распаковываем модель, если нужно
-if not TOKENIZER_JSON.exists():
+# ✅ Скачиваем и распаковываем модель
+if not MODEL_DIR.exists():
     print("📦 Загружаю модель с Google Drive...")
-    url = "https://drive.google.com/uc?id=1J_uFKwD5ktNwES6SZJSdXnH5LQFxKBVH"
-    gdown.download(url, ZIP_PATH, quiet=False)
+    file_id = "1J_uFKwD5ktNwES6SZJSdXnH5LQFxKBVH"  # <-- ID твоего архива
+    url = f"https://drive.google.com/uc?id={file_id}"
+    gdown.download(url, str(ZIP_PATH), quiet=False)
 
     print("📂 Распаковываю архив...")
     with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
-        zip_ref.extractall("tmp_extract")
+        zip_ref.extractall(BASE_DIR)
 
-    print("📁 Перемещаю файлы в dialogpt-small/")
-    extracted_dir = Path("tmp_extract") / MODEL_NAME
-    if extracted_dir.exists():
-        if not MODEL_DIR.exists():
-            shutil.move(str(extracted_dir), str(MODEL_DIR))
-        shutil.rmtree("tmp_extract")
-    else:
-        raise FileNotFoundError("❌ Не найдена папка с моделью внутри архива.")
+    # Проверяем, есть ли внутренняя папка с именем модели
+    extracted_folder = BASE_DIR / "dialogpt-small"
+    if not (extracted_folder / "tokenizer.json").exists():
+        for item in BASE_DIR.glob("*"):
+            if item.is_dir() and "dialogpt" in item.name.lower():
+                print("📁 Перемещаю файлы в dialogpt-small/")
+                if not MODEL_DIR.exists():
+                    MODEL_DIR.mkdir()
+                for f in item.iterdir():
+                    shutil.move(str(f), MODEL_DIR)
+                shutil.rmtree(item)
 
-    if not TOKENIZER_JSON.exists():
-        raise FileNotFoundError(f"❌ Файл {TOKENIZER_JSON} не найден.")
     print("✅ Модель распакована.")
 
-# Загружаем модель и токенизатор
+# 📤 Проверяем наличие нужного файла
+if not TOKENIZER_JSON.exists():
+    raise FileNotFoundError(f"❌ Файл {TOKENIZER_JSON} не найден.")
+
+# 🤖 Загружаем модель и токенизатор
 tokenizer = AutoTokenizer.from_pretrained(str(MODEL_DIR), local_files_only=True)
 model = AutoModelForCausalLM.from_pretrained(str(MODEL_DIR), local_files_only=True).to("cpu")
 
-# Истории сообщений
+# 💬 Храним историю диалогов
 chat_histories = {}
 
-# Обработка команд
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Привет! Я бот на DialoGPT. Напиши мне что-нибудь.")
+# 📝 Логгирование
+logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# Обработка сообщений
+# /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("Привет! Я бот на DialoGPT. Напиши мне что-нибудь!")
+
+# обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     user_message = update.message.text
+
     new_input_ids = tokenizer.encode(user_message + tokenizer.eos_token, return_tensors="pt")
 
     if chat_id not in chat_histories or chat_histories[chat_id].shape[-1] > 256:
@@ -79,10 +86,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     else:
         bot_input_ids = torch.cat([chat_histories[chat_id], new_input_ids], dim=-1)
 
+    # attention_mask устраняет предупреждение
+    attention_mask = torch.ones_like(bot_input_ids)
+
     chat_history_ids = model.generate(
         bot_input_ids,
         max_length=200,
-        pad_token_id=tokenizer.eos_token_id
+        pad_token_id=tokenizer.eos_token_id,
+        attention_mask=attention_mask
     )
 
     chat_histories[chat_id] = chat_history_ids
@@ -91,7 +102,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await update.message.reply_text(bot_response)
 
-# Главная функция запуска
+# 🔁 Основной запуск
 async def main():
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -105,8 +116,9 @@ async def main():
     print("🤖 Бот запущен.")
     await app.run_polling()
 
-# ✅ Запуск (без asyncio.run)
 if __name__ == "__main__":
+    import asyncio
     import nest_asyncio
-    nest_asyncio.apply()
+
+    nest_asyncio.apply()  # чтобы избежать ошибки "event loop is already running"
     asyncio.get_event_loop().run_until_complete(main())
