@@ -3,6 +3,7 @@ import zipfile
 import logging
 import torch
 import gdown
+from pathlib import Path
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from telegram import Update
@@ -23,43 +24,28 @@ if not hasattr(torch, "compiler"):
 if not hasattr(torch, "float8_e4m3fn"):
     torch.float8_e4m3fn = torch.float32
 
-# Пути к модели
-from pathlib import Path
-
-# Абсолютный путь к модели
+# Пути
 MODEL_DIR = Path("dialogpt-small").resolve()
-
-# Загрузка токенизатора и модели
-tokenizer = AutoTokenizer.from_pretrained(
-    MODEL_DIR,
-    local_files_only=True,
-    trust_remote_code=True
-)
-
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_DIR,
-    local_files_only=True,
-    trust_remote_code=True
-).to("cpu")
+ZIP_PATH = Path("dialogpt-small.zip").resolve()
 
 # ✅ Скачиваем и распаковываем модель
-if not os.path.exists(MODEL_DIR):
+if not MODEL_DIR.exists():
     print("📦 Загружаю модель с Google Drive...")
-    file_id = "1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"  # <-- сюда вставляй свой ID
+    file_id = "1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"
     url = f"https://drive.google.com/uc?id={file_id}"
-    gdown.download(url, ZIP_PATH, quiet=False)
+    gdown.download(url, str(ZIP_PATH), quiet=False)
 
     print("📂 Распаковываю архив...")
     with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
-        zip_ref.extractall(".")
+        zip_ref.extractall(MODEL_DIR.parent)
 
     print("✅ Модель распакована.")
 
 # Загружаем токенизатор и модель
-tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR, local_files_only=True)
-model = AutoModelForCausalLM.from_pretrained(MODEL_DIR, local_files_only=True).to("cpu")
+tokenizer = AutoTokenizer.from_pretrained(str(MODEL_DIR), local_files_only=True)
+model = AutoModelForCausalLM.from_pretrained(str(MODEL_DIR), local_files_only=True).to("cpu")
 
-# Истории диалогов
+# История сообщений
 chat_histories = {}
 
 # Логгирование
