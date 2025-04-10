@@ -5,14 +5,14 @@ import torch
 import gdown
 from pathlib import Path
 
-from transformers import GPT2LMHeadModel, PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizerFast, AutoModelForCausalLM
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 # Отключаем FlexAttention
 os.environ["TRANSFORMERS_NO_FLEX_ATTENTION"] = "1"
 
-# Заглушки для совместимости
+# Заглушки для совместимости с torch.compiler
 if not hasattr(torch, "compiler"):
     class DummyCompiler:
         @staticmethod
@@ -27,12 +27,13 @@ if not hasattr(torch, "float8_e4m3fn"):
 # Пути
 MODEL_DIR = Path("dialogpt-small").resolve()
 ZIP_PATH = "dialogpt-small.zip"
-GDRIVE_FILE_ID = "1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"
+TOKENIZER_JSON = MODEL_DIR / "tokenizer.json"
 
-# ✅ Скачиваем и распаковываем модель
+# ✅ Скачиваем и распаковываем модель, если её нет
 if not MODEL_DIR.exists():
     print("📦 Загружаю модель с Google Drive...")
-    url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
+    file_id = "1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"
+    url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, ZIP_PATH, quiet=False)
 
     print("📂 Распаковываю архив...")
@@ -41,30 +42,25 @@ if not MODEL_DIR.exists():
 
     print("✅ Модель распакована.")
 
-# Загружаем токенизатор и модель вручную
-tokenizer = PreTrainedTokenizerFast(
-    tokenizer_file=str(MODEL_DIR / "tokenizer.json"),
-    bos_token="<|endoftext|>",
-    eos_token="<|endoftext|>",
-    pad_token="<|endoftext|>"
-)
+# Проверка наличия tokenizer.json
+if not TOKENIZER_JSON.exists():
+    raise FileNotFoundError(f"❌ Файл {TOKENIZER_JSON} не найден.")
 
-model = GPT2LMHeadModel.from_pretrained(
-    str(MODEL_DIR),
-    local_files_only=True
-).to("cpu")
+# Загрузка токенизатора и модели
+tokenizer = PreTrainedTokenizerFast(tokenizer_file=str(TOKENIZER_JSON))
+model = AutoModelForCausalLM.from_pretrained(str(MODEL_DIR), local_files_only=True).to("cpu")
 
-# Истории диалогов
+# Хранение истории диалогов
 chat_histories = {}
 
-# Логгирование
+# Логирование
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 # Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Привет! Я бот на DialoGPT. Напиши мне что-нибудь!")
 
-# Обработка сообщений
+# Ответ на сообщение
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     user_message = update.message.text
@@ -88,7 +84,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await update.message.reply_text(bot_response)
 
-# Запуск
+# Запуск бота
 async def main():
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
