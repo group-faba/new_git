@@ -42,18 +42,16 @@ if not MODEL_DIR.exists():
     print("✅ Модель распакована.")
 
 # Загружаем токенизатор и модель
-tokenizer = AutoTokenizer.from_pretrained(
+from transformers import GPT2Tokenizer, GPT2LMHeadModel
+
+tokenizer = GPT2Tokenizer.from_pretrained(
     str(MODEL_DIR),
-    local_files_only=True,
-    use_auth_token=False,
-    token=None
+    local_files_only=True
 )
 
-model = AutoModelForCausalLM.from_pretrained(
+model = GPT2LMHeadModel.from_pretrained(
     str(MODEL_DIR),
-    local_files_only=True,
-    use_auth_token=False,
-    token=None
+    local_files_only=True
 ).to("cpu")
 
 # История сообщений
