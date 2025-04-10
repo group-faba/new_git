@@ -6,18 +6,6 @@ import gdown
 from pathlib import Path
 
 from transformers import GPT2LMHeadModel, PreTrainedTokenizerFast
-
-tokenizer = PreTrainedTokenizerFast(
-    tokenizer_file=str(MODEL_DIR / "tokenizer.json"),
-    bos_token="<|endoftext|>",
-    eos_token="<|endoftext|>",
-    pad_token="<|endoftext|>"
-)
-
-model = GPT2LMHeadModel.from_pretrained(
-    str(MODEL_DIR),
-    local_files_only=True
-).to("cpu")
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
@@ -38,27 +26,27 @@ if not hasattr(torch, "float8_e4m3fn"):
 
 # Пути
 MODEL_DIR = Path("dialogpt-small").resolve()
-ZIP_PATH = Path("dialogpt-small.zip").resolve()
+ZIP_PATH = "dialogpt-small.zip"
+GDRIVE_FILE_ID = "1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"
 
 # ✅ Скачиваем и распаковываем модель
 if not MODEL_DIR.exists():
     print("📦 Загружаю модель с Google Drive...")
-    file_id = "1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"
-    url = f"https://drive.google.com/uc?id={file_id}"
-    gdown.download(url, str(ZIP_PATH), quiet=False)
+    url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
+    gdown.download(url, ZIP_PATH, quiet=False)
 
     print("📂 Распаковываю архив...")
     with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
-        zip_ref.extractall(MODEL_DIR.parent)
+        zip_ref.extractall(".")
 
     print("✅ Модель распакована.")
 
-# Загружаем токенизатор и модель
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
-
-tokenizer = GPT2Tokenizer.from_pretrained(
-    str(MODEL_DIR),
-    local_files_only=True
+# Загружаем токенизатор и модель вручную
+tokenizer = PreTrainedTokenizerFast(
+    tokenizer_file=str(MODEL_DIR / "tokenizer.json"),
+    bos_token="<|endoftext|>",
+    eos_token="<|endoftext|>",
+    pad_token="<|endoftext|>"
 )
 
 model = GPT2LMHeadModel.from_pretrained(
@@ -66,7 +54,7 @@ model = GPT2LMHeadModel.from_pretrained(
     local_files_only=True
 ).to("cpu")
 
-# История сообщений
+# Истории диалогов
 chat_histories = {}
 
 # Логгирование
