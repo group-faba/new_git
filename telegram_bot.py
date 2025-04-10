@@ -107,11 +107,6 @@ async def main():
 
 # ✅ Запуск (без asyncio.run)
 if __name__ == "__main__":
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(main())
-        else:
-            loop.run_until_complete(main())
-    except RuntimeError:
-        asyncio.run(main())
+    import nest_asyncio
+    nest_asyncio.apply()
+    asyncio.get_event_loop().run_until_complete(main())
