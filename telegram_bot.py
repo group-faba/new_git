@@ -1,8 +1,8 @@
 import os
 import zipfile
-import requests
 import logging
 import torch
+import gdown
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from telegram import Update
@@ -23,18 +23,16 @@ if not hasattr(torch, "compiler"):
 if not hasattr(torch, "float8_e4m3fn"):
     torch.float8_e4m3fn = torch.float32
 
-# Путь к модели
+# Пути к модели
 MODEL_DIR = "./dialogpt-small"
 ZIP_PATH = "dialogpt-small.zip"
 
-# ✅ Загружаем и распаковываем модель
+# ✅ Скачиваем и распаковываем модель
 if not os.path.exists(MODEL_DIR):
     print("📦 Загружаю модель с Google Drive...")
-    url = "https://drive.google.com/uc?id=1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"  # <- замени на свою ссылку
-    response = requests.get(url, stream=True)
-    with open(ZIP_PATH, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
+    file_id = "1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"  # <-- сюда вставляй свой ID
+    url = f"https://drive.google.com/uc?id={file_id}"
+    gdown.download(url, ZIP_PATH, quiet=False)
 
     print("📂 Распаковываю архив...")
     with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
@@ -49,14 +47,14 @@ model = AutoModelForCausalLM.from_pretrained(MODEL_DIR).to("cpu")
 # Истории диалогов
 chat_histories = {}
 
-# Логгинг
+# Логгирование
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# /start
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Привет! Я бот на DialoGPT. Напиши мне что-нибудь!")
 
-# Ответ на сообщение
+# Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     user_message = update.message.text
@@ -75,13 +73,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     chat_histories[chat_id] = chat_history_ids
-
     response_ids = chat_history_ids[:, bot_input_ids.shape[-1]:]
     bot_response = tokenizer.decode(response_ids[0], skip_special_tokens=True)
 
     await update.message.reply_text(bot_response)
 
-# main
+# Запуск
 async def main():
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
