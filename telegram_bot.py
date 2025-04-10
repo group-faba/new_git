@@ -31,7 +31,7 @@ ZIP_PATH = "dialogpt-small.zip"
 # ✅ Скачиваем и распаковываем модель
 if not MODEL_DIR.exists():
     print("📦 Загружаю модель с Google Drive...")
-    file_id = "1HrKfhlIB83bYdeqZ5wbB93uBiikBJAu_"
+    file_id = "1J_uFKwD5ktNwES6SZJSdXnH5LQFxKBVH"
     url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, ZIP_PATH, quiet=False)
 
