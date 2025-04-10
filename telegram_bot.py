@@ -24,7 +24,8 @@ if not hasattr(torch, "float8_e4m3fn"):
     torch.float8_e4m3fn = torch.float32
 
 # Пути к модели
-MODEL_DIR = "./dialogpt-small"
+from pathlib import Path
+MODEL_DIR = Path("dialogpt-small").resolve()
 ZIP_PATH = "dialogpt-small.zip"
 
 # ✅ Скачиваем и распаковываем модель
